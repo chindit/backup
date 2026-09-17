@@ -19,7 +19,10 @@ public sealed class BackupService : IBackupService
         return 0;
     }
 
-    public bool Compress(DirectoryInfo source, DirectoryInfo destination)
+    public bool Compress(
+        DirectoryInfo source,
+        DirectoryInfo destination,
+        IReadOnlyCollection<string>? excludeDirectories = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -54,11 +57,15 @@ public sealed class BackupService : IBackupService
 
         try
         {
-            ZipFile.CreateFromDirectory(
-                sourcePath,
-                temporaryArchivePath,
-                CompressionLevel.Optimal,
-                includeBaseDirectory: false);
+            using (FileStream archiveStream = new(
+                       temporaryArchivePath,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None))
+            using (ZipArchive archive = new(archiveStream, ZipArchiveMode.Create))
+            {
+                AddDirectoryToArchive(archive, sourcePath, excludeDirectories);
+            }
 
             File.Move(temporaryArchivePath, archivePath, overwrite: true);
             Console.WriteLine("Compression completed successfully.");
@@ -82,6 +89,50 @@ public sealed class BackupService : IBackupService
                 Console.Error.WriteLine($"Could not remove temporary archive {temporaryArchivePath}: {exception.Message}");
             }
         }
+    }
+
+    private static void AddDirectoryToArchive(
+        ZipArchive archive,
+        string sourcePath,
+        IReadOnlyCollection<string>? excludeDirectories)
+    {
+        StringComparer comparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var excludedDirectoryNames = new HashSet<string>(
+            excludeDirectories?.Where(name => !string.IsNullOrWhiteSpace(name))
+            ?? [],
+            comparer);
+        var directoriesToProcess = new Stack<DirectoryInfo>();
+        directoriesToProcess.Push(new DirectoryInfo(sourcePath));
+
+        while (directoriesToProcess.TryPop(out DirectoryInfo? directory))
+        {
+            foreach (FileInfo file in directory.EnumerateFiles())
+            {
+                string entryName = ToZipEntryName(Path.GetRelativePath(sourcePath, file.FullName));
+                archive.CreateEntryFromFile(file.FullName, entryName, CompressionLevel.Optimal);
+            }
+
+            foreach (DirectoryInfo childDirectory in directory.EnumerateDirectories())
+            {
+                if (excludedDirectoryNames.Contains(childDirectory.Name))
+                {
+                    Console.WriteLine($"Excluding directory from archive: {childDirectory.FullName}");
+                    continue;
+                }
+
+                string entryName = ToZipEntryName(
+                    Path.GetRelativePath(sourcePath, childDirectory.FullName));
+                archive.CreateEntry($"{entryName}/");
+                directoriesToProcess.Push(childDirectory);
+            }
+        }
+    }
+
+    private static string ToZipEntryName(string relativePath)
+    {
+        return relativePath.Replace(Path.DirectorySeparatorChar, '/');
     }
 
     public bool Upload(DirectoryInfo archiveDirectory, BackupFtpConfig config)

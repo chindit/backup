@@ -78,6 +78,31 @@ public sealed class BackupServiceTests : IDisposable
     }
 
     [Fact]
+    public void Compress_WithExcludedDirectories_OmitsDirectoriesAndTheirContents()
+    {
+        DirectoryInfo source = CreateDirectory("source");
+        DirectoryInfo destination = CreateDirectory("destination");
+        Directory.CreateDirectory(Path.Combine(source.FullName, "Cache"));
+        Directory.CreateDirectory(Path.Combine(source.FullName, "Metadata", "Driver"));
+        Directory.CreateDirectory(Path.Combine(source.FullName, "Metadata", "Keep"));
+        File.WriteAllText(Path.Combine(source.FullName, "Cache", "cached.txt"), "excluded");
+        File.WriteAllText(Path.Combine(source.FullName, "Metadata", "Driver", "driver.txt"), "excluded");
+        File.WriteAllText(Path.Combine(source.FullName, "Metadata", "Keep", "kept.txt"), "included");
+
+        bool result = new BackupService().Compress(
+            source,
+            destination,
+            ["Cache", "Driver"]);
+
+        Assert.True(result);
+        using ZipArchive archive = ZipFile.OpenRead(
+            Path.Combine(destination.FullName, BackupService.ArchiveFileName));
+        Assert.DoesNotContain(archive.Entries, entry => entry.FullName.StartsWith("Cache/"));
+        Assert.DoesNotContain(archive.Entries, entry => entry.FullName.StartsWith("Metadata/Driver/"));
+        Assert.Equal("included", ReadEntry(archive, "Metadata/Keep/kept.txt"));
+    }
+
+    [Fact]
     public void Upload_WithMissingArchive_ReturnsFalse()
     {
         DirectoryInfo archiveDirectory = CreateDirectory("destination");

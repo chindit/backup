@@ -121,7 +121,7 @@ public sealed class BackupCommand : Command
             return 1;
         }
 
-        if (!_backupService.Compress(source, destination))
+        if (!_backupService.Compress(source, destination, config.excludeDirectories ?? []))
         {
             return 1;
         }

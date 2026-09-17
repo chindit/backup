@@ -24,7 +24,8 @@ public sealed class BackupCommandTests : IDisposable
         backupService
             .Setup(service => service.Compress(
                 It.IsAny<DirectoryInfo>(),
-                It.IsAny<DirectoryInfo>()))
+                It.IsAny<DirectoryInfo>(),
+                It.IsAny<IReadOnlyCollection<string>>()))
             .Returns(true);
         backupService
             .Setup(service => service.Upload(
@@ -43,7 +44,9 @@ public sealed class BackupCommandTests : IDisposable
         Assert.Equal(0, exitCode);
         backupService.Verify(service => service.Compress(
             It.Is<DirectoryInfo>(directory => directory.FullName == source.FullName),
-            It.Is<DirectoryInfo>(directory => directory.FullName == destination.FullName)),
+            It.Is<DirectoryInfo>(directory => directory.FullName == destination.FullName),
+            It.Is<IReadOnlyCollection<string>>(excluded => excluded.SequenceEqual(
+                new[] { "Cache", "Driver" }))),
             Times.Once);
         backupService.Verify(service => service.Upload(
             It.Is<DirectoryInfo>(directory => directory.FullName == destination.FullName),
@@ -63,7 +66,8 @@ public sealed class BackupCommandTests : IDisposable
         backupService
             .Setup(service => service.Compress(
                 It.IsAny<DirectoryInfo>(),
-                It.IsAny<DirectoryInfo>()))
+                It.IsAny<DirectoryInfo>(),
+                It.IsAny<IReadOnlyCollection<string>>()))
             .Returns(false);
 
         int exitCode = CreateRootCommand(backupService.Object).Parse(
@@ -89,7 +93,8 @@ public sealed class BackupCommandTests : IDisposable
         backupService
             .Setup(service => service.Compress(
                 It.IsAny<DirectoryInfo>(),
-                It.IsAny<DirectoryInfo>()))
+                It.IsAny<DirectoryInfo>(),
+                It.IsAny<IReadOnlyCollection<string>>()))
             .Returns(true);
         backupService
             .Setup(service => service.Upload(
@@ -125,6 +130,7 @@ public sealed class BackupCommandTests : IDisposable
         {
             sourceDirectory = source.FullName,
             tempDirectory = destination.FullName,
+            excludeDirectories = ["Cache", "Driver"],
             ftp = new FtpConfig
             {
                 server = "ftp.example.com",
