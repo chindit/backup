@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PlexBackup.csproj" />
+  <Project Path="PlexBackup.Test/PlexBackup.Test.csproj" />
+</Solution>
