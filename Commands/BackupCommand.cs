@@ -44,45 +44,57 @@ public sealed class BackupCommand : Command
         SetAction(Execute);
     }
 
+    private static bool TryReadConfig(FileInfo configFile, out BackupConfig config)
+    {
+        config = null!;
+
+        if (!configFile.Exists)
+        {
+            Console.Error.WriteLine("Configuration file not found. Looked in {0}", configFile.FullName);
+            return false;
+        }
+
+        try
+        {
+            BackupConfig? deserializedConfig = JsonSerializer.Deserialize<BackupConfig>(
+                File.ReadAllText(configFile.FullName));
+
+            if (deserializedConfig is null || deserializedConfig.ftp is null)
+            {
+                Console.Error.WriteLine("Configuration file is empty or invalid: {0}", configFile.FullName);
+                return false;
+            }
+
+            config = deserializedConfig;
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException
+                                          or UnauthorizedAccessException
+                                          or JsonException)
+        {
+            Console.Error.WriteLine("Could not read configuration file {0}: {1}", configFile.FullName, exception.Message);
+            return false;
+        }
+    }
+
     private static bool TryResolvePaths(
-        FileInfo config,
+        BackupConfig config,
         DirectoryInfo? source,
         DirectoryInfo? destination,
         out DirectoryInfo resolvedSource,
         out DirectoryInfo resolvedDestination)
     {
-        resolvedSource = source!;
-        resolvedDestination = destination!;
-
-        if (source is null || destination is null)
+        try
         {
-            if (!config.Exists)
-            {
-                Console.Error.WriteLine("Configuration file not found. Looked in {0}", config.FullName);
-                return false;
-            }
-
-            try
-            {
-                BackupConfig? configFile = JsonSerializer.Deserialize<BackupConfig>(
-                    File.ReadAllText(config.FullName));
-
-                if (configFile is null)
-                {
-                    Console.Error.WriteLine("Configuration file is empty or invalid: {0}", config.FullName);
-                    return false;
-                }
-
-                resolvedSource = source ?? new DirectoryInfo(configFile.sourceDirectory);
-                resolvedDestination = destination ?? new DirectoryInfo(configFile.tempDirectory);
-            }
-            catch (Exception exception) when (exception is IOException
-                                              or UnauthorizedAccessException
-                                              or JsonException)
-            {
-                Console.Error.WriteLine("Could not read configuration file {0}: {1}", config.FullName, exception.Message);
-                return false;
-            }
+            resolvedSource = source ?? new DirectoryInfo(config.sourceDirectory);
+            resolvedDestination = destination ?? new DirectoryInfo(config.tempDirectory);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        {
+            Console.Error.WriteLine($"Invalid storage path in configuration: {exception.Message}");
+            resolvedSource = null!;
+            resolvedDestination = null!;
+            return false;
         }
 
         if (resolvedSource.Exists && resolvedDestination.Exists)
@@ -103,14 +115,17 @@ public sealed class BackupCommand : Command
         DirectoryInfo? destination = parseResult.GetValue(_destinationOption);
         FileInfo configFile = parseResult.GetRequiredValue(_configOption);
 
-        if (!TryResolvePaths(configFile, source, destination, out source, out destination))
+        if (!TryReadConfig(configFile, out BackupConfig config)
+            || !TryResolvePaths(config, source, destination, out source, out destination))
         {
             return 1;
         }
 
-        bool compressed = _backupService.Compress(source, destination);
-        //_backupService.Upload(_destination, _config);
+        if (!_backupService.Compress(source, destination))
+        {
+            return 1;
+        }
 
-        return compressed ? 0 : 1;
+        return _backupService.Upload(destination, config.ftp) ? 0 : 1;
     }
 }

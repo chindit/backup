@@ -1,4 +1,9 @@
 using System.IO.Compression;
+using System.Net.Sockets;
+using System.Security.Authentication;
+using FluentFTP;
+using FluentFTP.Exceptions;
+using BackupFtpConfig = PlexBackup.Resources.FtpConfig;
 
 namespace PlexBackup.Services;
 
@@ -77,6 +82,94 @@ public sealed class BackupService : IBackupService
                 Console.Error.WriteLine($"Could not remove temporary archive {temporaryArchivePath}: {exception.Message}");
             }
         }
+    }
+
+    public bool Upload(DirectoryInfo archiveDirectory, BackupFtpConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(archiveDirectory);
+        ArgumentNullException.ThrowIfNull(config);
+
+        string archivePath = Path.Combine(archiveDirectory.FullName, ArchiveFileName);
+        if (!File.Exists(archivePath))
+        {
+            Console.Error.WriteLine($"Archive to upload not found: {archivePath}");
+            return false;
+        }
+
+        if (!TryParseFtpServer(config.server, out Uri serverUri))
+        {
+            Console.Error.WriteLine($"Invalid FTP server: {config.server}");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.username) || string.IsNullOrWhiteSpace(config.password))
+        {
+            Console.Error.WriteLine("FTP username and password are required.");
+            return false;
+        }
+
+        string remoteDirectory = Uri.UnescapeDataString(serverUri.AbsolutePath).TrimEnd('/');
+        string remotePath = $"{remoteDirectory}/{ArchiveFileName}";
+
+        Console.WriteLine($"Uploading {archivePath} to ftp://{serverUri.Authority}{remotePath}");
+
+        try
+        {
+            using var client = new FtpClient(
+                serverUri.Host,
+                config.username,
+                config.password,
+                serverUri.Port);
+
+            client.AutoConnect();
+            FtpStatus status = client.UploadFile(
+                archivePath,
+                remotePath,
+                FtpRemoteExists.Overwrite,
+                createRemoteDir: true,
+                FtpVerify.Retry);
+
+            if (status != FtpStatus.Success)
+            {
+                Console.Error.WriteLine($"FTP upload failed with status: {status}");
+                return false;
+            }
+
+            Console.WriteLine("FTP upload completed successfully.");
+            return true;
+        }
+        catch (Exception exception) when (exception is FtpException
+                                          or IOException
+                                          or SocketException
+                                          or AuthenticationException
+                                          or TimeoutException)
+        {
+            Console.Error.WriteLine($"FTP upload failed: {exception.Message}");
+            return false;
+        }
+    }
+
+    private static bool TryParseFtpServer(string server, out Uri serverUri)
+    {
+        serverUri = null!;
+        if (string.IsNullOrWhiteSpace(server))
+        {
+            return false;
+        }
+
+        string serverWithScheme = server.Contains("://", StringComparison.Ordinal)
+            ? server
+            : $"ftp://{server}";
+
+        if (!Uri.TryCreate(serverWithScheme, UriKind.Absolute, out Uri? parsedUri)
+            || parsedUri.Scheme != Uri.UriSchemeFtp
+            || string.IsNullOrWhiteSpace(parsedUri.Host))
+        {
+            return false;
+        }
+
+        serverUri = parsedUri;
+        return true;
     }
 
     private static bool IsSameDirectoryOrChild(string candidatePath, string parentPath)

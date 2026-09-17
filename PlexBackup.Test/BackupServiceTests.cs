@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using PlexBackup.Resources;
 using PlexBackup.Services;
 using Xunit;
 
@@ -76,6 +77,35 @@ public sealed class BackupServiceTests : IDisposable
         Assert.False(File.Exists(Path.Combine(destination.FullName, BackupService.ArchiveFileName)));
     }
 
+    [Fact]
+    public void Upload_WithMissingArchive_ReturnsFalse()
+    {
+        DirectoryInfo archiveDirectory = CreateDirectory("destination");
+
+        bool result = new BackupService().Upload(archiveDirectory, CreateFtpConfig());
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void Upload_WithInvalidServer_ReturnsFalseWithoutConnecting()
+    {
+        DirectoryInfo archiveDirectory = CreateDirectory("destination");
+        File.WriteAllText(
+            Path.Combine(archiveDirectory.FullName, BackupService.ArchiveFileName),
+            "archive");
+        var config = new FtpConfig
+        {
+            server = "http://not-an-ftp-server.example.com",
+            username = "test-user",
+            password = "test-password"
+        };
+
+        bool result = new BackupService().Upload(archiveDirectory, config);
+
+        Assert.False(result);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_testDirectory))
@@ -96,5 +126,15 @@ public sealed class BackupServiceTests : IDisposable
             candidate => candidate.FullName == entryName);
         using StreamReader reader = new(entry.Open());
         return reader.ReadToEnd();
+    }
+
+    private static FtpConfig CreateFtpConfig()
+    {
+        return new FtpConfig
+        {
+            server = "ftp.example.com",
+            username = "test-user",
+            password = "test-password"
+        };
     }
 }
