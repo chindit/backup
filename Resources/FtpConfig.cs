@@ -1,8 +1,8 @@
-﻿namespace PlexBackup.Resources;
+namespace PlexBackup.Resources;
 
 public sealed class FtpConfig
 {
-    public required string server { get; init; }
-    public required string username { get; init; }
-    public required string password { get; init; }
+    public string Server { get; init; } = "";
+    public string Username { get; init; } = "";
+    public string PasswordCredential { get; init; } = "";
 }

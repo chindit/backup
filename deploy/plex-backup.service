@@ -1,0 +1,21 @@
+[Unit]
+Description=Sauvegarde Plex, Jellyfin et Home Assistant
+Wants=network-online.target
+After=network-online.target jellyfin.service
+
+[Service]
+Type=oneshot
+User=backup
+Group=backup
+WorkingDirectory=/opt/plex-backup
+ExecStart=/usr/bin/dotnet /opt/plex-backup/PlexBackup.dll backup --config /etc/backup.json
+
+LoadCredentialEncrypted=ftp_password:/etc/credstore.encrypted/ftp_password
+LoadCredentialEncrypted=jellyfin_api_key:/etc/credstore.encrypted/jellyfin_api_key
+LoadCredentialEncrypted=homeassistant_token:/etc/credstore.encrypted/homeassistant_token
+
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

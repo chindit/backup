@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text.Json;
 using Moq;
 using PlexBackup.Commands;
+using PlexBackup.Models;
 using PlexBackup.Resources;
 using PlexBackup.Services;
 using Xunit;
@@ -15,100 +16,103 @@ public sealed class BackupCommandTests : IDisposable
         $"PlexBackup.CommandTests.{Guid.NewGuid():N}");
 
     [Fact]
-    public void Invoke_WithValidConfiguration_CompressesAndUploadsArchive()
+    public void Invoke_WithRepeatedModules_ForwardsSelection()
     {
-        DirectoryInfo source = CreateDirectory("plex-source");
-        DirectoryInfo destination = CreateDirectory("plex-destination");
-        FileInfo configFile = CreateConfig(source, destination);
-        var backupService = new Mock<IBackupService>();
-        backupService
-            .Setup(service => service.Compress(
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<IReadOnlyCollection<string>>()))
-            .Returns(true);
-        backupService
-            .Setup(service => service.Upload(
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<FtpConfig>()))
-            .Returns(true);
+        FileInfo configFile = CreateConfig();
+        IReadOnlyCollection<string>? capturedModules = null;
+        var runner = new Mock<IBackupRunner>();
+        runner.Setup(service => service.RunAsync(
+                It.IsAny<AppConfig>(),
+                It.IsAny<IReadOnlyCollection<string>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AppConfig, IReadOnlyCollection<string>, CancellationToken>(
+                (_, modules, _) => capturedModules = modules)
+            .ReturnsAsync(
+            [
+                new ModuleResult("plex", true, "ok"),
+                new ModuleResult("jellyfin", true, "ok")
+            ]);
 
-        int exitCode = CreateRootCommand(backupService.Object).Parse(
+        int exitCode = CreateRootCommand(runner.Object).Parse(
         [
             "backup",
-            "--source", source.FullName,
-            "--destination", destination.FullName,
+            "--config", configFile.FullName,
+            "--module", "plex",
+            "--module", "jellyfin"
+        ]).Invoke();
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            ["plex", "jellyfin"],
+            capturedModules);
+    }
+
+    [Fact]
+    public void Invoke_WithoutModule_ForwardsEmptySelection()
+    {
+        FileInfo configFile = CreateConfig();
+        IReadOnlyCollection<string>? capturedModules = null;
+        var runner = new Mock<IBackupRunner>();
+        runner.Setup(service => service.RunAsync(
+                It.IsAny<AppConfig>(),
+                It.IsAny<IReadOnlyCollection<string>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AppConfig, IReadOnlyCollection<string>, CancellationToken>(
+                (_, modules, _) => capturedModules = modules)
+            .ReturnsAsync(
+            [
+                new ModuleResult("plex", true, "ok")
+            ]);
+
+        int exitCode = CreateRootCommand(runner.Object).Parse(
+        [
+            "backup",
             "--config", configFile.FullName
         ]).Invoke();
 
         Assert.Equal(0, exitCode);
-        backupService.Verify(service => service.Compress(
-            It.Is<DirectoryInfo>(directory => directory.FullName == source.FullName),
-            It.Is<DirectoryInfo>(directory => directory.FullName == destination.FullName),
-            It.Is<IReadOnlyCollection<string>>(excluded => excluded.SequenceEqual(
-                new[] { "Cache", "Driver" }))),
-            Times.Once);
-        backupService.Verify(service => service.Upload(
-            It.Is<DirectoryInfo>(directory => directory.FullName == destination.FullName),
-            It.Is<FtpConfig>(ftp => ftp.server == "ftp.example.com"
-                                    && ftp.username == "test-user"
-                                    && ftp.password == "test-password")),
-            Times.Once);
+        Assert.Empty(capturedModules!);
     }
 
     [Fact]
-    public void Invoke_WhenCompressionFails_DoesNotUploadArchive()
+    public void Invoke_WhenOneModuleFails_ReturnsFailure()
     {
-        DirectoryInfo source = CreateDirectory("plex-source");
-        DirectoryInfo destination = CreateDirectory("plex-destination");
-        FileInfo configFile = CreateConfig(source, destination);
-        var backupService = new Mock<IBackupService>();
-        backupService
-            .Setup(service => service.Compress(
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<IReadOnlyCollection<string>>()))
-            .Returns(false);
+        FileInfo configFile = CreateConfig();
+        var runner = new Mock<IBackupRunner>();
+        runner.Setup(service => service.RunAsync(
+                It.IsAny<AppConfig>(),
+                It.IsAny<IReadOnlyCollection<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ModuleResult("plex", false, "failed")
+            ]);
 
-        int exitCode = CreateRootCommand(backupService.Object).Parse(
+        int exitCode = CreateRootCommand(runner.Object).Parse(
         [
             "backup",
             "--config", configFile.FullName
         ]).Invoke();
 
         Assert.Equal(1, exitCode);
-        backupService.Verify(service => service.Upload(
-            It.IsAny<DirectoryInfo>(),
-            It.IsAny<FtpConfig>()),
-            Times.Never);
     }
 
     [Fact]
-    public void Invoke_WhenUploadFails_ReturnsFailure()
+    public void Invoke_WithMissingConfig_DoesNotRun()
     {
-        DirectoryInfo source = CreateDirectory("plex-source");
-        DirectoryInfo destination = CreateDirectory("plex-destination");
-        FileInfo configFile = CreateConfig(source, destination);
-        var backupService = new Mock<IBackupService>();
-        backupService
-            .Setup(service => service.Compress(
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<IReadOnlyCollection<string>>()))
-            .Returns(true);
-        backupService
-            .Setup(service => service.Upload(
-                It.IsAny<DirectoryInfo>(),
-                It.IsAny<FtpConfig>()))
-            .Returns(false);
+        var runner = new Mock<IBackupRunner>();
+        string missingPath = Path.Combine(
+            _testDirectory,
+            "missing.json");
 
-        int exitCode = CreateRootCommand(backupService.Object).Parse(
+        int exitCode = CreateRootCommand(runner.Object).Parse(
         [
             "backup",
-            "--config", configFile.FullName
+            "--config", missingPath
         ]).Invoke();
 
         Assert.Equal(1, exitCode);
+        runner.VerifyNoOtherCalls();
     }
 
     public void Dispose()
@@ -119,35 +123,47 @@ public sealed class BackupCommandTests : IDisposable
         }
     }
 
-    private DirectoryInfo CreateDirectory(string name)
+    private FileInfo CreateConfig()
     {
-        return Directory.CreateDirectory(Path.Combine(_testDirectory, name));
-    }
-
-    private FileInfo CreateConfig(DirectoryInfo source, DirectoryInfo destination)
-    {
-        var config = new BackupConfig
+        Directory.CreateDirectory(_testDirectory);
+        var config = new AppConfig
         {
-            sourceDirectory = source.FullName,
-            tempDirectory = destination.FullName,
-            excludeDirectories = ["Cache", "Driver"],
-            ftp = new FtpConfig
+            Ftp = new FtpConfig
             {
-                server = "ftp.example.com",
-                username = "test-user",
-                password = "test-password"
+                Server = "ftp://ftp.example.com/backups",
+                Username = "test-user",
+                PasswordCredential = "ftp_password"
+            },
+            Modules = new ModulesConfig
+            {
+                Plex = new PlexModuleConfig
+                {
+                    SourceDirectory = "/srv/plex",
+                    TempDirectory = "/var/tmp",
+                    ExcludeDirectories = ["Cache"]
+                },
+                Jellyfin = new JellyfinModuleConfig
+                {
+                    Server = "http://localhost:8096",
+                    ApiKeyCredential = "jellyfin_api_key"
+                }
             }
         };
-        string configPath = Path.Combine(_testDirectory, "config.json");
-        File.WriteAllText(configPath, JsonSerializer.Serialize(config));
+        string configPath = Path.Combine(
+            _testDirectory,
+            "config.json");
+        File.WriteAllText(
+            configPath,
+            JsonSerializer.Serialize(config));
         return new FileInfo(configPath);
     }
 
-    private static RootCommand CreateRootCommand(IBackupService backupService)
+    private static RootCommand CreateRootCommand(
+        IBackupRunner backupRunner)
     {
         return new RootCommand
         {
-            new BackupCommand(backupService)
+            new BackupCommand(backupRunner)
         };
     }
 }

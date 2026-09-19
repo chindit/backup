@@ -1,0 +1,31 @@
+{
+  "ftp": {
+    "server": "ftp://ftp.example.com/backups",
+    "username": "backup-user",
+    "passwordCredential": "ftp_password"
+  },
+  "modules": {
+    "plex": {
+      "sourceDirectory": "/var/lib/plex/Plex Media Server",
+      "tempDirectory": "/var/tmp/backup",
+      "excludeDirectories": [
+        "Cache",
+        "Codecs",
+        "Crash Reports",
+        "Logs"
+      ]
+    },
+    "jellyfin": {
+      "server": "http://127.0.0.1:8096",
+      "apiKeyCredential": "jellyfin_api_key",
+      "metadata": true,
+      "subtitles": true,
+      "trickplay": false
+    },
+    "homeassistant": {
+      "server": "https://ha.example.com",
+      "tokenCredential": "homeassistant_token",
+      "tempDirectory": "/var/tmp/backup"
+    }
+  }
+}
