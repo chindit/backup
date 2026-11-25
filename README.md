@@ -1,6 +1,6 @@
 # PlexBackup
 
-PlexBackup creates or retrieves backups for Plex, Jellyfin, and Home Assistant,
+PlexBackup creates or retrieves backups for Plex, Silo, and Home Assistant,
 then uploads them to a plain FTP server.
 
 ## Usage
@@ -14,7 +14,7 @@ dotnet PlexBackup.dll backup --config /etc/backup.json
 Run only one module:
 
 ```sh
-dotnet PlexBackup.dll backup --config /etc/backup.json --module jellyfin
+dotnet PlexBackup.dll backup --config /etc/backup.json --module silo
 ```
 
 Select several modules by repeating the option:
@@ -25,7 +25,7 @@ dotnet PlexBackup.dll backup --config /etc/backup.json \
   --module homeassistant
 ```
 
-Available module names are `plex`, `jellyfin`, and `homeassistant`. There is no
+Available module names are `plex`, `silo`, and `homeassistant`. There is no
 `enabled` setting. Without `--module`, every configured module runs. When the
 option is present, only the explicitly selected modules run.
 
@@ -50,12 +50,12 @@ adjust it for your systems:
       "tempDirectory": "/var/tmp/backup",
       "excludeDirectories": ["Cache", "Codecs", "Logs"]
     },
-    "jellyfin": {
-      "server": "http://127.0.0.1:8096",
-      "apiKeyCredential": "jellyfin_api_key",
-      "metadata": true,
-      "subtitles": true,
-      "trickplay": false
+    "silo": {
+      "server": "http://127.0.0.1:8090",
+      "apiKeyCredential": "silo_api_key",
+      "tempDirectory": "/var/tmp/backup",
+      "timeoutSeconds": 3600,
+      "pollIntervalSeconds": 5
     },
     "homeassistant": {
       "server": "https://ha.example.com",
@@ -69,12 +69,37 @@ adjust it for your systems:
 The service account running PlexBackup must:
 
 - be able to read the Plex data directory;
-- be able to read backups created by Jellyfin;
 - be able to write to each `tempDirectory`.
 
-The Jellyfin API key must have administrator access. Home Assistant requires a
+The Silo API key must belong to an administrator and allow the native backup
+operations. Home Assistant requires a
 long-lived access token belonging to an administrator, and its URL must use
 HTTPS.
+
+### Silo backups
+
+The Silo module requires the native `/api/v2/admin/backups` API described in
+[Silo's backup API contract](https://github.com/Silo-Server/silo-server/blob/main/docs/backups-api.md).
+It checks backup capabilities, starts one manual backup, polls that backup's ID
+until it finishes, and downloads all objects with `scope: full`. Their sizes and
+SHA-256 checksums are checked before the objects and `manifest.json` are bundled
+into `silo-DDMMYYYY.zip` for FTP. Only the temporary ZIP is removed afterwards;
+Silo manages retention of its own backups. A backup completed with warnings is
+uploaded with a warning on standard error; incomplete or failed backups are not.
+
+Configure backup storage in Silo first. Native backups require the PostgreSQL
+user store and compatible `pg_dump`/`pg_restore` tools on the Silo server.
+The timeout covers creation and downloading (default 3600 seconds); polling is
+every 5 seconds by default. Both settings must be positive. A timeout or a
+connection failure does not stop a backup already started on Silo; the module
+does not automatically retry the creation request.
+
+To restore the whole server, extract the ZIP into a folder and follow
+[Silo's restore instructions](https://siloserver.org/docs/restore) using that
+folder with `silo backup restore --from`. Backups from S3 remain encrypted:
+keep the corresponding `SECRET_KEY` separately. Silo's native backups exclude
+your media, `.env`, Compose files, and `SECRET_KEY`; preserve those separately
+as described in the [backup documentation](https://siloserver.org/docs/backups).
 
 ## Secrets
 
@@ -95,8 +120,8 @@ input:
 sudo systemd-creds encrypt --name=ftp_password \
   - /etc/credstore.encrypted/ftp_password
 
-sudo systemd-creds encrypt --name=jellyfin_api_key \
-  - /etc/credstore.encrypted/jellyfin_api_key
+sudo systemd-creds encrypt --name=silo_api_key \
+  - /etc/credstore.encrypted/silo_api_key
 
 sudo systemd-creds encrypt --name=homeassistant_token \
   - /etc/credstore.encrypted/homeassistant_token
@@ -106,7 +131,7 @@ Load the credentials required by the configured modules in the systemd service:
 
 ```ini
 LoadCredentialEncrypted=ftp_password:/etc/credstore.encrypted/ftp_password
-LoadCredentialEncrypted=jellyfin_api_key:/etc/credstore.encrypted/jellyfin_api_key
+LoadCredentialEncrypted=silo_api_key:/etc/credstore.encrypted/silo_api_key
 LoadCredentialEncrypted=homeassistant_token:/etc/credstore.encrypted/homeassistant_token
 ```
 

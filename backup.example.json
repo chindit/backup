@@ -15,12 +15,12 @@
         "Logs"
       ]
     },
-    "jellyfin": {
-      "server": "http://127.0.0.1:8096",
-      "apiKeyCredential": "jellyfin_api_key",
-      "metadata": true,
-      "subtitles": true,
-      "trickplay": false
+    "silo": {
+      "server": "http://127.0.0.1:8090",
+      "apiKeyCredential": "silo_api_key",
+      "tempDirectory": "/var/tmp/backup",
+      "timeoutSeconds": 3600,
+      "pollIntervalSeconds": 5
     },
     "homeassistant": {
       "server": "https://ha.example.com",

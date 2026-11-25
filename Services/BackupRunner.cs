@@ -10,7 +10,7 @@ public sealed class BackupRunner : IBackupRunner
         new(StringComparer.OrdinalIgnoreCase)
         {
             "plex",
-            "jellyfin",
+            "silo",
             "homeassistant"
         };
 

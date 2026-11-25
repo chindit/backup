@@ -92,7 +92,7 @@ public sealed class BackupRunnerTests : IDisposable
     [Fact]
     public async Task RunAsync_ContinuesAfterAModuleFailure()
     {
-        FileInfo jellyfinArtifact = CreateArtifact("jellyfin.zip");
+        FileInfo siloArtifact = CreateArtifact("silo.zip");
         var failingModule = new Mock<IBackupModule>();
         failingModule.Setup(value => value.CreateBackupAsync(
                 It.IsAny<CancellationToken>()))
@@ -102,8 +102,8 @@ public sealed class BackupRunnerTests : IDisposable
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(
                 new BackupArtifact(
-                    "jellyfin",
-                    jellyfinArtifact,
+                    "silo",
+                    siloArtifact,
                     DeleteAfterRun: false));
 
         var factory = new Mock<IBackupModuleFactory>();
@@ -112,7 +112,7 @@ public sealed class BackupRunnerTests : IDisposable
                 It.IsAny<ModulesConfig>()))
             .Returns(failingModule.Object);
         factory.Setup(value => value.Create(
-                "jellyfin",
+                "silo",
                 It.IsAny<ModulesConfig>()))
             .Returns(successfulModule.Object);
         var uploader = new Mock<IFtpUploader>();
@@ -133,10 +133,11 @@ public sealed class BackupRunnerTests : IDisposable
             Modules = new ModulesConfig
             {
                 Plex = config.Modules.Plex,
-                Jellyfin = new JellyfinModuleConfig
+                Silo = new SiloModuleConfig
                 {
-                    Server = "http://localhost:8096",
-                    ApiKeyCredential = "jellyfin_api_key"
+                    Server = "http://localhost:8090",
+                    ApiKeyCredential = "silo_api_key",
+                    TempDirectory = "/var/tmp"
                 }
             }
         };
@@ -150,7 +151,7 @@ public sealed class BackupRunnerTests : IDisposable
         Assert.False(results[0].Success);
         Assert.True(results[1].Success);
         uploader.Verify(value => value.UploadAsync(
-            jellyfinArtifact,
+            siloArtifact,
             It.IsAny<string>(),
             config.Ftp,
             It.IsAny<CancellationToken>()),

@@ -1,7 +1,7 @@
 [Unit]
-Description=Sauvegarde Plex, Jellyfin et Home Assistant
+Description=Sauvegarde Plex, Silo et Home Assistant
 Wants=network-online.target
-After=network-online.target jellyfin.service
+After=network-online.target
 
 [Service]
 Type=oneshot
@@ -11,7 +11,7 @@ WorkingDirectory=/opt/plex-backup
 ExecStart=/usr/bin/dotnet /opt/plex-backup/PlexBackup.dll backup --config /etc/backup.json
 
 LoadCredentialEncrypted=ftp_password:/etc/credstore.encrypted/ftp_password
-LoadCredentialEncrypted=jellyfin_api_key:/etc/credstore.encrypted/jellyfin_api_key
+LoadCredentialEncrypted=silo_api_key:/etc/credstore.encrypted/silo_api_key
 LoadCredentialEncrypted=homeassistant_token:/etc/credstore.encrypted/homeassistant_token
 
 PrivateTmp=true

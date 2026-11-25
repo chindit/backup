@@ -22,9 +22,9 @@ public sealed class BackupModuleFactory : IBackupModuleFactory
                 new PlexBackupModule(
                     config.Plex,
                     new ZipArchiveService()),
-            "jellyfin" when config.Jellyfin is not null =>
-                new JellyfinBackupModule(
-                    config.Jellyfin,
+            "silo" when config.Silo is not null =>
+                new SiloBackupModule(
+                    config.Silo,
                     _credentialStore),
             "homeassistant" when config.HomeAssistant is not null =>
                 new HomeAssistantBackupModule(

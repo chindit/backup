@@ -30,7 +30,7 @@ public sealed class BackupCommandTests : IDisposable
             .ReturnsAsync(
             [
                 new ModuleResult("plex", true, "ok"),
-                new ModuleResult("jellyfin", true, "ok")
+                new ModuleResult("silo", true, "ok")
             ]);
 
         int exitCode = CreateRootCommand(runner.Object).Parse(
@@ -38,12 +38,12 @@ public sealed class BackupCommandTests : IDisposable
             "backup",
             "--config", configFile.FullName,
             "--module", "plex",
-            "--module", "jellyfin"
+            "--module", "silo"
         ]).Invoke();
 
         Assert.Equal(0, exitCode);
         Assert.Equal(
-            ["plex", "jellyfin"],
+            ["plex", "silo"],
             capturedModules);
     }
 
@@ -142,10 +142,11 @@ public sealed class BackupCommandTests : IDisposable
                     TempDirectory = "/var/tmp",
                     ExcludeDirectories = ["Cache"]
                 },
-                Jellyfin = new JellyfinModuleConfig
+                Silo = new SiloModuleConfig
                 {
-                    Server = "http://localhost:8096",
-                    ApiKeyCredential = "jellyfin_api_key"
+                    Server = "http://localhost:8090",
+                    ApiKeyCredential = "silo_api_key",
+                    TempDirectory = "/var/tmp"
                 }
             }
         };
